@@ -1,0 +1,217 @@
+#container {
+    display: grid;
+    grid-template-columns: 120px auto 120px;
+    grid-template-rows: repeat(3, auto);
+    grid-gap:1em;
+    grid-template-areas: 
+        "header header header"
+        "sidebar-left center sidebar-right"
+        "footer footer footer";
+    min-width: 450px;
+    max-width: 800px;
+}
+
+header {
+    grid-area: header;
+}
+
+article {
+    grid-area: article;
+}
+
+.sidebar-left {
+    grid-area: sidebar-left;
+}
+
+.sidebar-right {
+    grid-area: sidebar-right;
+}
+
+footer {
+    grid-area: footer;
+}
+
+.sidebar-left, .sidebar-right, footer {
+    background-color: whitesmoke;
+    border-radius: 7px;
+    padding: 10px;
+ }
+
+/* .sidebar-right {
+    background-color: whitesmoke;
+ } */
+footer {
+     /* background-color: whitesmoke; */
+     border: 2px solid rgb(236, 234, 234);
+     /* border-radius: 7px; */
+
+ }
+
+
+div#todotitle {
+    display: flex;
+    flex-direction: row;
+    margin-bottom: 0px;
+    font-family: Arial, Helvetica, sans-serif;
+}
+
+div#muchtodo {
+    flex: auto;
+    text-align: right;
+    padding-left: 5px;
+    padding-right: 10px;
+    margin-right: 3px;
+    background-color: whitesmoke;
+    border-top-left-radius: 7px;
+    border-bottom-left-radius: 7px;
+}
+
+div#littletime {
+    flex: auto;
+    text-align: left;
+    background-color: whitesmoke;
+    padding-left: 10px;
+    padding-right: 5px;
+    padding-top:17px;
+    margin-left: 3px;
+    border-top-right-radius: 7px;
+    border-bottom-right-radius: 7px;
+}
+
+/* article#todolist {
+    display: flex;
+    flex-direction: column;
+    
+} */
+
+section.todoitem {
+    display: flex;
+    flex-direction: row;
+   /*  display: inline-block; */
+    vertical-align: middle;
+    background-color: lightgrey;
+    margin-left: 0px;
+    margin-top: 8px;
+    margin-bottom: 8px;
+    border-radius: 8px;
+}
+
+.taskdescription {
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding-left: 7px;
+    padding-right: 7px;
+    margin-right: 10px;
+    /* vertical-align: middle; */
+}
+
+/* p.taskdescription {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    /* vertical-align: middle; */
+*/
+p.taskdescription > input {
+    flex: 1;
+    border-radius: 5px;
+}
+
+p.taskdescription > textarea {
+    flex: 1;
+    border-radius: 5px;
+}
+
+.itembuttons {
+    display: flex;
+    flex-direction: row;
+    /* flex-wrap: wrap; */
+    align-items: center;
+    list-style-type: none;
+    /* vertical-align: middle; */
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 70%;
+    font-weight: bold;
+    text-align: middle;
+    color: whitesmoke;
+	background-color: whitesmoke;
+	padding: 3px;
+	margin: 7px;
+	border-radius: 5px;
+}
+
+
+.status {
+    margin: 5px;
+}
+
+.editbtn, .deletebtn {
+    display: inline-block;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 80%;
+    font-weight: bold;
+    color: whitesmoke;
+	background-color: darkslategrey;
+	padding: 5px;
+	margin: 4px;
+    border-radius: 5px;
+}
+
+.controls {
+    display: flex;
+    flex-direction: column;
+}
+
+.control {
+    display: flex;
+    flex-direction: column;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 90%;
+    max-width: 360px;
+    background-color: lightgrey;
+    border-radius: 8px;
+    padding: 10px;
+    margin-top: 0px;
+    margin-bottom: 8px;
+}
+
+.controlrow {
+    display: flex;
+    /* display: none; */
+    flex-direction: horizontal;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 70%;
+    max-width: 360px;
+    background-color: lightgrey;
+    border-radius: 8px;
+    padding: 10px;
+    margin-top: 0px;
+    margin-bottom: 8px;
+}
+
+fieldset {
+    /* display: inline-block; */
+    border-radius: 5px;
+    padding: 5px;
+    font-size: 90%;
+}
+
+
+.controlbtn {
+    margin: 7px;
+    padding-top: 5px;
+    padding-bottom: 5px;
+    border-radius: 6px;
+    color: whitesmoke;
+    background-color: darkslategrey;
+    font-size: 85%;
+    /* font-weight: bold; */
+}
+
+.controlrow > .controlbtn {
+    margin-left: 0px;
+    margin-right: 0px;
+    margin-top: 7px;
+    margin-bottom:  7px;
+}
