@@ -87,7 +87,11 @@ const init = () => {
                     .catch(error => console.log(error))
             }
             else if (event.target.closest('INPUT.editbtn')){
-                console.log("edit");
+                var taskel = docElems.editTemplate.cloneNode(true);
+                var taskdata = {taskid: 100, taskdescription: "test desc", status: "done"};
+                console.log(taskdata);
+                updateTaskElement(taskdata, taskel);
+                appendTaskElement(taskel);
             }
             else if (event.target.closest('INPUT.deletebtn')){
                 console.log("delete");
