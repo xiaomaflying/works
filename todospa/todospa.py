@@ -139,6 +139,20 @@ def db_update_status(id, status):
     db.que("UPDATE todo SET status = ? WHERE id LIKE ?", (status, id))
     db.close()
 
+def db_update_desc(id, desc):
+    ''' update description for task with id '''
+    db = DaBa("todo")
+    # note: the following string interpolation happens in SQL, not in Python
+    db.que("UPDATE todo SET task = ? WHERE id LIKE ?", (desc, id))
+    db.close()
+
+def db_delete_task(id):
+    ''' delete id '''
+    db = DaBa("todo")
+    db.que("DELETE FROM todo WHERE id LIKE ?", (id, ))
+    db.close()
+
+
 
 ''' ----------------- view model ------------------- '''
 
@@ -179,15 +193,21 @@ def view_new_task(new_task):
 
 def view_update_status(vm_task_data):
     ''' updates status to vm_status for task with taskid '''
+    print(vm_task_data)
     taskid = vm_task_data['taskid']
     vm_status = vm_task_data['status']
     db_status = view_to_db_status(vm_status)
     db_id = taskid
     db_update_status(db_id, db_status)
+    if vm_task_data.get('taskdescription'):
+        db_update_desc(db_id, vm_task_data['taskdescription'])
     #confirming update
     task = view_get_task(taskid)
+    # print('='*20)
+    # print(task)
     if vm_status == task['status']:
-        return {'taskid': taskid, 'status': vm_status}
+        return task
+        # return {'taskid': taskid, 'status': vm_status}
     else:
         return {'error': "status update failed"}
 
@@ -235,6 +255,19 @@ def update_status():
     print(updated_task)
 
     return pack_task(updated_task)
+
+@route('/task/update', method="POST")
+def update_task():
+    task_data = unpack_task(request) 
+    updated_task = view_update_status(task_data)
+    return pack_task(task_data)
+
+@route('/task/delete', method="POST")
+def delete_task_by_id():
+    task_data = unpack_task(request)
+    db_delete_task(task_data['taskid'])
+    return task_data
+
 
 @route('/static/<filename>')
 def static(filename):

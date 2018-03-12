@@ -9,6 +9,7 @@ const initDocElems = () => {
 };
 
 var docElems;
+var cacheItems = {};
 
 const init = () => {
     // tasks load asynchronously with rest of init()
@@ -54,47 +55,111 @@ const init = () => {
     document.querySelector('#todolist')
         .addEventListener('click', (event) => {
             if (event.target.closest('INPUT.status')) {
-                console.log("task checked? " + event.target.checked);
-                status = (event.target.checked ? "done" : "tbd");
-                console.log('status: ' + status);
+                var todoitem = event.target.parentElement.parentElement.parentElement;
+                console.log(todoitem.className);
+                if (todoitem.className.indexOf("todoForm") !== -1){
+                    console.log("edit status")
+                } else {
+                    console.log("list status")
+                    // console.log("task checked? " + event.target.checked);
+                    status = (event.target.checked ? "done" : "tbd");
+                    // console.log('status: ' + status);
 
-                taskid = event.target.closest('SECTION.todoitem').children[0].value;
-                console.log('taskid: ' + taskid);
+                    taskid = event.target.closest('SECTION.todoitem').children[0].value;
+                    // console.log('taskid: ' + taskid);
 
-                postData('/status/update', { 'taskid': taskid, 'status': status })
-                    .then(response => {
-                        console.log("before reading body of postData response:")
-                        console.log(response);
+                    postData('/status/update', { 'taskid': taskid, 'status': status })
+                        .then(response => {
+                            // console.log("before reading body of postData response:")
+                            console.log(response);
 
-                        message = response.json();
+                            message = response.json();
 
-                        console.log("after reading body of postData response:")
-                        console.log(response);
-                        console.log("message read from response body: ")
-                        console.log(message);
-
-                        return message;
-                    })
-                    .then(reply => {
-                        console.log("reply that resolved promise:")
-                        console.log(reply);
-                        
-                        if (reply.error) {
-                            alert("Server Error: " + reply.error)
-                        }
-                    })
-                    // catch errors not caught by server-side application 
-                    .catch(error => console.log(error))
+                            return message;
+                        })
+                        .then(reply => {
+                            // console.log("reply that resolved promise:")
+                            // console.log(reply);
+                            
+                            if (reply.error) {
+                                alert("Server Error: " + reply.error)
+                            }
+                        })
+                        // catch errors not caught by server-side application 
+                        .catch(error => console.log(error))
+                }
             }
-            else if (event.target.closest('INPUT.editbtn')){
+            else if (event.target.closest('INPUT.editbtn') && 
+                event.target.closest('INPUT.editbtn').value == "Edit"){
+                var todoitem = event.target.parentElement.parentElement.parentElement;
+                var itemId = todoitem.querySelector('.taskid').value;
+                cacheItems[itemId] = todoitem;
                 var taskel = docElems.editTemplate.cloneNode(true);
-                var taskdata = {taskid: 100, taskdescription: "test desc", status: "done"};
-                console.log(taskdata);
-                updateTaskElement(taskdata, taskel);
-                appendTaskElement(taskel);
+                var status = false;
+                if (todoitem.querySelector('INPUT.status').checked){
+                    status = "done";
+                }
+                // console.log(todoitem.querySelector('.taskdescription'))
+                var taskdata = {
+                    taskid: itemId, 
+                    taskdescription: todoitem.querySelector('.taskdescription').innerText, 
+                    status: status,
+                };
+                var descHTML = '<textarea form="form-" name="taskdescription" placeholder="Please describe your task">'+taskdata.taskdescription + '</textarea>';
+                setTaskId(taskel, taskdata.taskid);
+                setTaskDescription(taskel, descHTML);
+                setStatus(taskel, taskdata.status);
+
+                // todoitem.style.display = 'none';
+                todoitem.parentElement.replaceChild(taskel, todoitem);
             }
-            else if (event.target.closest('INPUT.deletebtn')){
-                console.log("delete");
+            else if (event.target.closest('INPUT.deletebtn') && 
+                event.target.closest('INPUT.deletebtn').value == "Cancel"){
+                    var todoitem = event.target.parentElement.parentElement.parentElement;
+                    var itemId = todoitem.querySelector('.taskid').value;
+                    if (!cacheItems[itemId] !== undefined){
+                        var todoitem = event.target.parentElement.parentElement.parentElement;
+                        todoitem.parentElement.replaceChild(cacheItems[itemId], todoitem);
+                        delete cacheItems[itemId];
+                    }
+            }
+            else if (event.target.closest('INPUT.deletebtn') && 
+                event.target.closest('INPUT.deletebtn').value == "Delete"){
+                if (confirm("Delete item?")) {
+                    console.log("delete");
+                    var todoitem = event.target.parentElement.parentElement.parentElement;
+                    var itemId = todoitem.querySelector('.taskid').value;
+                    console.log('delete id');
+                    console.log(itemId);
+                    postData('/task/delete', {"taskid": itemId}).then(rsp => {
+                        todoitem.parentElement.removeChild(todoitem);
+                    });
+                }
+            }
+            else if (event.target.closest('INPUT.editbtn') && 
+                event.target.closest('INPUT.editbtn').value == "Save"){
+                var todoitem = event.target.parentElement.parentElement.parentElement;
+                var itemId = todoitem.querySelector('.taskid').value;
+                cacheItems[itemId] = todoitem;
+                var taskel = docElems.editTemplate.cloneNode(true);
+                var status = "tbd";
+                if (todoitem.querySelector('INPUT.status').checked){
+                    status = "done";
+                }
+                var desc = todoitem.querySelector('.taskdescription').firstElementChild.value;
+                var taskdata = {
+                    taskid: itemId, 
+                    taskdescription: desc, 
+                    status: status,
+                };
+                postTask(taskdata).then(rsp => {
+                    var task = rsp.json();
+                    return task
+                }).then(task => {
+                    var taskel = docElems.taskTemplate.cloneNode(true);
+                    updateTaskElement(task, taskel);
+                    todoitem.parentElement.replaceChild(taskel, todoitem);
+                });
             }
             // addition eventListeners go here for clicks of buttons
             // Edit, Delete
@@ -111,7 +176,6 @@ const loadTasks = () => {
         })
         .then(tasks => {
             console.log("resolving promise in loadTasks response:")
-            console.log(tasks);
             createTaskElements(tasks);
         })
 };
@@ -140,7 +204,7 @@ const getTasks = (filter) => {
 
 const putTask = (task) => {
     console.log("from putTask, task:");
-    console.log(task);
+    // console.log(task);
     return fetch('/task/new', {
 
         // represent JS object as a string
@@ -161,8 +225,7 @@ const putTask = (task) => {
 
 const postTask = (task) => {
     console.log("from postTask, task:");
-    console.log(task);
-    return postData('/task/update/', task)
+    return postData('/task/update', task)
 }
 
 function postData(url, jsondata) {
@@ -280,6 +343,7 @@ const handleFilterTask = (event) => {
 }
 
 const handleNewTaskSave = (event) => {
+    console.log("save")
     var taskFormEl = event.target.closest('section.todoitem');
     task = {
         taskdescription: getTaskFormDescription(taskFormEl),
@@ -287,19 +351,12 @@ const handleNewTaskSave = (event) => {
     };
     putTask(task)
         .then(rsp => {
-            console.log("before reading putTask response body");
-            console.log(rsp);
             payload = rsp.json();
-            console.log("after reading putTask response body");
-            console.log(rsp);
-            console.log("payload:");
-            console.log(payload);
             return payload
         })
         .then(task => {
-            console.log("task resolving promise:")
-            console.log(task);
-            createTaskElement(task);
+            // createTaskElement(task);
+            createAndAppendTaskElement(task);
             taskFormEl.remove();
         })
 }
