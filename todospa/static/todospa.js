@@ -85,7 +85,13 @@ const init = () => {
                     })
                     // catch errors not caught by server-side application 
                     .catch(error => console.log(error))
-            };
+            }
+            else if (event.target.closest('INPUT.editbtn')){
+                console.log("edit");
+            }
+            else if (event.target.closest('INPUT.deletebtn')){
+                console.log("delete");
+            }
             // addition eventListeners go here for clicks of buttons
             // Edit, Delete
             // Save and Cancel (these on the form created click on Edit)
