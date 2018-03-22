@@ -12,6 +12,10 @@
 
 
 void diskinfo(int argc, char* argv[]){
+    if (argc != 2){
+		fprintf(stderr, "usage: ./diskinfo test.img\n");
+		exit(0);
+    }
 
     int fd = open(argv[1], O_RDWR);
     struct stat buffer;
@@ -82,17 +86,27 @@ void diskinfo(int argc, char* argv[]){
 
 
 void disklist(int argc, char* argv[]){
-	printf("in disklist");
+    if (argc != 3){
+		fprintf(stderr, "usage: ./disklist test.img /sub_dir\n");
+		exit(0);
+    }
 }
 
 
 void diskget(int argc, char* argv[]){
-	printf("in diskget");
+    if (argc != 4){
+		fprintf(stderr, "usage: ./diskget test.img /sub_dir/foo2.txt foo.txt\n");
+		exit(0);
+    }
 }
 
 
 void diskput(int argc, char* argv[]){
-	printf("in diskput");
+    if (argc != 4){
+		fprintf(stderr, "usage: ./diskput test.img foo.txt /sub_dir/foo3.txt\n");
+		exit(0);
+    }
+
 }
 
 
