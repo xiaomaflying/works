@@ -11,7 +11,70 @@
 #include <unistd.h> 
 
 
-void diskinfo(int argc, char* argv[]){
+int* get_diskinfo(char* image){
+    int fd = open(image, O_RDWR);
+    struct stat buffer;
+    fstat(fd, &buffer);
+
+    void* address=mmap(NULL, buffer.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    int blocksize, blockcount, fat_starts, fat_blocks, root_dir_start, root_dir_blocks;
+
+    memcpy(&blocksize,address+8,2);
+    blocksize=htons(blocksize);
+
+    memcpy(&blockcount, address+10, 4);
+    blockcount=htonl(blockcount);
+
+    memcpy(&fat_starts, address+14, 4);
+    fat_starts=htonl(fat_starts);
+
+    memcpy(&fat_blocks, address+18, 4);
+    fat_blocks=htonl(fat_blocks);
+
+    memcpy(&root_dir_start, address+22, 4);
+    root_dir_start=htonl(root_dir_start);
+
+    memcpy(&root_dir_blocks, address+26, 4);
+    root_dir_blocks=htonl(root_dir_blocks);
+
+    int free_blocks = 0;
+    int reserve_blocks = 0;
+    int allocate_blocks = 0;
+
+    void* fat_addr = address + fat_starts * blocksize;
+    int fat_item_value;
+    void* fat_item_addr = NULL;
+
+    for (int i = 0; i < fat_blocks * blocksize / 4; i++){
+        fat_item_addr = fat_addr + i * 4;
+        memcpy(&fat_item_value, fat_item_addr, 4);
+        fat_item_value = htonl(fat_item_value);
+        if (fat_item_value == 0)
+            free_blocks += 1;
+        else if (fat_item_value == 1)
+            reserve_blocks += 1;
+        else
+            allocate_blocks += 1;
+    }
+
+    static int info_result[9];
+    info_result[0] = blocksize;
+    info_result[1] = blockcount;
+    info_result[2] = fat_starts;
+    info_result[3] = fat_blocks;
+    info_result[4] = root_dir_start;
+    info_result[5] = root_dir_blocks;
+    info_result[6] = free_blocks;
+    info_result[7] = reserve_blocks;
+    info_result[8] = allocate_blocks;
+
+    munmap(address,buffer.st_size);
+    close(fd);
+    return info_result;
+}
+
+
+int* diskinfo(int argc, char* argv[]){
     if (argc != 2){
 		fprintf(stderr, "usage: ./diskinfo test.img\n");
 		exit(0);
@@ -58,8 +121,7 @@ void diskinfo(int argc, char* argv[]){
     void* fat_addr = address + fat_starts * blocksize;
     int fat_item_value;
     void* fat_item_addr = NULL;
-    printf("fat item number : %d\n", fat_blocks * blocksize / 4);
-
+    // printf("fat item number : %d\n", fat_blocks * blocksize / 4);
 
     for (int i = 0; i < fat_blocks * blocksize / 4; i++){
         fat_item_addr = fat_addr + i * 4;
@@ -79,9 +141,20 @@ void diskinfo(int argc, char* argv[]){
     printf("Reserved Blocks: %d\n", reserve_blocks);
     printf("Allocated Blocks: %d\n", allocate_blocks);
 
-
+    static int info_result[9];
+    info_result[0] = blocksize;
+    info_result[1] = blockcount;
+    info_result[2] = fat_starts;
+    info_result[3] = fat_blocks;
+    info_result[4] = root_dir_start;
+    info_result[5] = root_dir_blocks;
+    info_result[6] = free_blocks;
+    info_result[7] = reserve_blocks;
+    info_result[8] = allocate_blocks;
+     // {blocksize, blockcount, fat_starts, fat_blocks, root_dir_start, root_dir_blocks, free_blocks, reserve_blocks, allocate_blocks};
     munmap(address,buffer.st_size);
     close(fd);
+    return info_result;
 }
 
 
@@ -89,6 +162,14 @@ void disklist(int argc, char* argv[]){
     if (argc != 3){
 		fprintf(stderr, "usage: ./disklist test.img /sub_dir\n");
 		exit(0);
+    }
+
+    char* dirname = argv[2];
+    printf("dirname: %s", dirname);
+
+    int* disk_info = get_diskinfo(argv[1]);
+    for (int i=0; i<9; i++){
+        printf("%d\n", disk_info[i]);
     }
 }
 
