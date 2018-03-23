@@ -11,6 +11,13 @@
 #include <unistd.h> 
 
 
+struct info{
+    char c;
+    int i;
+    short j;
+};
+
+
 int* get_diskinfo(char* image){
     int fd = open(image, O_RDWR);
     struct stat buffer;
@@ -55,6 +62,10 @@ int* get_diskinfo(char* image){
             reserve_blocks += 1;
         else
             allocate_blocks += 1;
+
+        // if ((fat_item_value != 0) && (fat_item_value != 1)){
+        //     printf("index: %d\n", i);
+        // }
     }
 
     static int info_result[9];
@@ -116,6 +127,15 @@ void diskinfo(int argc, char* argv[]){
 
 }
 
+struct __attribute__((__packed__)) dir_entry_timedate_t {
+    uint16_t year;
+    uint8_t month;
+    uint8_t day;
+    uint8_t hour; 
+    uint8_t minute; 
+    uint8_t second;
+};
+
 
 void disklist(int argc, char* argv[]){
     if (argc != 3){
@@ -123,8 +143,8 @@ void disklist(int argc, char* argv[]){
 		exit(0);
     }
 
-    char* dirname = argv[2];
-    printf("dirname: %s", dirname);
+    // char* dirname = argv[2];
+    // printf("dirname: %s", dirname);
 
     int blocksize, blockcount, fat_starts, fat_blocks, root_dir_start, root_dir_blocks;
     int free_blocks, reserve_blocks, allocate_blocks;
@@ -139,7 +159,49 @@ void disklist(int argc, char* argv[]){
     reserve_blocks = info_result[7];
     allocate_blocks = info_result[8];
 
-    
+    int fd = open(argv[1], O_RDWR);
+    struct stat buffer;
+    fstat(fd, &buffer);
+
+    void* address=mmap(NULL, buffer.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+
+    char status;
+    int starting_block, number_block, file_size;
+    // short int year;
+    // char month, day, hour, minute, second;
+    struct dir_entry_timedate_t ct;
+    struct dir_entry_timedate_t mt;
+    void* root_item_addr = NULL;
+    char file_name[32];
+
+    void* root_start_addr = address + root_dir_start*blocksize;
+    for(int i=0; i<root_dir_blocks*blocksize/64; i++){
+        root_item_addr = root_start_addr + i * 64;
+        memcpy(&status, root_item_addr, 1);
+        memcpy(&starting_block, root_item_addr+1, 4);
+        starting_block = htonl(starting_block);
+        memcpy(&number_block, root_item_addr+5, 4);
+        number_block = htonl(number_block);
+        memcpy(&file_size, root_item_addr+9, 4);
+        file_size = htonl(file_size);
+        printf("index: %d, status %d, start block: %d, block number: %d, file size: %d\n", i, status, starting_block, number_block, file_size);
+
+        // void* create_time_start = root_item_addr + 13;
+        memcpy(&ct, root_item_addr+13, 7);
+        ct.year = htons(ct.year);
+        printf("create time: %d-%02d-%02d %02d:%02d:%02d\n", ct.year, ct.month, ct.day, ct.hour, ct.minute, ct.second);
+
+        memcpy(&mt, root_item_addr+20, 7);
+        mt.year = htons(mt.year);
+        printf("modify time: %d-%02d-%02d %02d:%02d:%02d\n", mt.year, mt.month, mt.day, mt.hour, mt.minute, mt.second);
+
+        memcpy(&file_name, root_item_addr+27, 31);
+        printf("name: %s\n", file_name);
+    }
+
+
+    munmap(address,buffer.st_size);
+    close(fd);
 }
 
 
