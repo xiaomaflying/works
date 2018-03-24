@@ -18,6 +18,37 @@ struct info{
 };
 
 
+char** directory_parts(char* str){
+    char a[100];
+    strcpy(a, str);
+    char** parts = malloc(32*sizeof(char*));
+    for (int i=0; i<32; i++){
+        parts[i] = (char*)malloc(32*sizeof(char));
+    }
+
+    char *token = strtok(a, "/");
+    int index = 0;
+   
+    while (token != NULL)
+    {
+        parts[index++] = token;
+        token = strtok(NULL, "/");
+    }
+    return parts;
+}
+
+int directory_length(char* str){
+    int length = 0;
+    // printf("%lu\n", strlen(str));
+    for (int i=0; i<strlen(str); i++){
+        if (str[i] == '/'){
+            length++;
+        }
+    }
+    return length;
+}
+
+
 int* get_diskinfo(char* image){
     int fd = open(image, O_RDWR);
     struct stat buffer;
@@ -143,8 +174,8 @@ void disklist(int argc, char* argv[]){
 		exit(0);
     }
 
-    // char* dirname = argv[2];
-    // printf("dirname: %s", dirname);
+    char* dirname = argv[2];
+    printf("dirname: %s\n", dirname);
 
     int blocksize, blockcount, fat_starts, fat_blocks, root_dir_start, root_dir_blocks;
     int free_blocks, reserve_blocks, allocate_blocks;
@@ -167,6 +198,7 @@ void disklist(int argc, char* argv[]){
 
     char status;
     int starting_block, number_block, file_size;
+    char ftype;
     // short int year;
     // char month, day, hour, minute, second;
     struct dir_entry_timedate_t ct;
@@ -178,27 +210,70 @@ void disklist(int argc, char* argv[]){
     for(int i=0; i<root_dir_blocks*blocksize/64; i++){
         root_item_addr = root_start_addr + i * 64;
         memcpy(&status, root_item_addr, 1);
+        if ((status&0x01) == 0) {
+            continue;
+        }
+        if ((status&0x02) == 0x02) {
+            ftype = 'F';
+        }
+        else{
+            ftype = 'D';
+        }
         memcpy(&starting_block, root_item_addr+1, 4);
         starting_block = htonl(starting_block);
         memcpy(&number_block, root_item_addr+5, 4);
         number_block = htonl(number_block);
         memcpy(&file_size, root_item_addr+9, 4);
         file_size = htonl(file_size);
-        printf("index: %d, status %d, start block: %d, block number: %d, file size: %d\n", i, status, starting_block, number_block, file_size);
+        // printf("index: %d, status %d, start block: %d, block number: %d, file size: %d\n", i, status, starting_block, number_block, file_size);
 
-        // void* create_time_start = root_item_addr + 13;
         memcpy(&ct, root_item_addr+13, 7);
         ct.year = htons(ct.year);
-        printf("create time: %d-%02d-%02d %02d:%02d:%02d\n", ct.year, ct.month, ct.day, ct.hour, ct.minute, ct.second);
+        // printf("create time: %d-%02d-%02d %02d:%02d:%02d\n", ct.year, ct.month, ct.day, ct.hour, ct.minute, ct.second);
 
         memcpy(&mt, root_item_addr+20, 7);
         mt.year = htons(mt.year);
-        printf("modify time: %d-%02d-%02d %02d:%02d:%02d\n", mt.year, mt.month, mt.day, mt.hour, mt.minute, mt.second);
+        // printf("modify time: %d-%02d-%02d %02d:%02d:%02d\n", mt.year, mt.month, mt.day, mt.hour, mt.minute, mt.second);
 
         memcpy(&file_name, root_item_addr+27, 31);
-        printf("name: %s\n", file_name);
+
+        printf("%c %10d %30s %d/%02d/%02d %02d:%02d:%02d\n", ftype, file_size, file_name, mt.year, mt.month, mt.day, mt.hour, mt.minute, mt.second);
+        // printf("name: %s\n", file_name);
+
+
+        // copy to local 
+        if (strcmp(file_name, "disk.img.gz") == 0) {
+            void* fat_start_addr = address + blocksize*fat_starts;
+            int index = 0;
+            int start = starting_block;
+            char* localfile = "disk.img.gz";
+            void* buf = malloc(file_size);
+            printf("blocksize: %d\n", number_block);
+            while (index < number_block){
+                int fat_value = htonl(*(int*)(fat_start_addr + 4*start));
+                printf("%d\n", fat_value);
+                if (index == (number_block-1)){
+                    int left = file_size - (number_block-1)*blocksize;
+                    memcpy(buf+index*blocksize, address+start*blocksize, left);
+                }
+                else{
+                    memcpy(buf+index*blocksize, address+start*blocksize, blocksize);
+                }
+                index++;
+                start = fat_value;
+            }
+
+            // write memory data to local file
+            FILE* stream;
+            stream = fopen(localfile, "w");
+            fwrite(buf, 1, file_size, stream);
+            fclose(stream);
+        }
     }
 
+    
+
+    // copy to local
 
     munmap(address,buffer.st_size);
     close(fd);
