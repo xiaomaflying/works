@@ -50,13 +50,24 @@ int directory_length(char* str){
 }
 
 
-int* get_diskinfo(char* image){
-    int fd = open(image, O_RDWR);
-    struct stat buffer;
+// global variables; using function get_distinfo to init them
+
+int fd;
+struct stat buffer;
+void* address;  // fat system img start address
+
+int blocksize, blockcount, fat_starts, fat_blocks, root_dir_start, root_dir_blocks;
+int free_blocks, reserve_blocks, allocate_blocks;
+
+void* fat_addr;  // fat table address
+
+
+// init the global variables
+void get_diskinfo(char* image){
+    fd = open(image, O_RDWR);
     fstat(fd, &buffer);
 
-    void* address=mmap(NULL, buffer.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    int blocksize, blockcount, fat_starts, fat_blocks, root_dir_start, root_dir_blocks;
+    address=mmap(NULL, buffer.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 
     memcpy(&blocksize,address+8,2);
     blocksize=htons(blocksize);
@@ -76,11 +87,11 @@ int* get_diskinfo(char* image){
     memcpy(&root_dir_blocks, address+26, 4);
     root_dir_blocks=htonl(root_dir_blocks);
 
-    int free_blocks = 0;
-    int reserve_blocks = 0;
-    int allocate_blocks = 0;
+    int _free_blocks = 0;
+    int _reserve_blocks = 0;
+    int _allocate_blocks = 0;
 
-    void* fat_addr = address + fat_starts * blocksize;
+    fat_addr = address + fat_starts * blocksize;
     int fat_item_value;
     void* fat_item_addr = NULL;
 
@@ -89,31 +100,23 @@ int* get_diskinfo(char* image){
         memcpy(&fat_item_value, fat_item_addr, 4);
         fat_item_value = htonl(fat_item_value);
         if (fat_item_value == 0)
-            free_blocks += 1;
+            _free_blocks += 1;
         else if (fat_item_value == 1)
-            reserve_blocks += 1;
+            _reserve_blocks += 1;
         else
-            allocate_blocks += 1;
-
-        // if ((fat_item_value != 0) && (fat_item_value != 1)){
-        //     printf("index: %d\n", i);
-        // }
+            _allocate_blocks += 1;
     }
 
-    static int info_result[9];
-    info_result[0] = blocksize;
-    info_result[1] = blockcount;
-    info_result[2] = fat_starts;
-    info_result[3] = fat_blocks;
-    info_result[4] = root_dir_start;
-    info_result[5] = root_dir_blocks;
-    info_result[6] = free_blocks;
-    info_result[7] = reserve_blocks;
-    info_result[8] = allocate_blocks;
+    free_blocks = _free_blocks;
+    reserve_blocks = _reserve_blocks;
+    allocate_blocks = _allocate_blocks;
 
-    munmap(address,buffer.st_size);
+}
+
+
+void release_img(){
+    munmap(address, buffer.st_size);
     close(fd);
-    return info_result;
 }
 
 
@@ -123,18 +126,7 @@ void diskinfo(int argc, char* argv[]){
 		exit(0);
     }
 
-    int blocksize, blockcount, fat_starts, fat_blocks, root_dir_start, root_dir_blocks;
-    int free_blocks, reserve_blocks, allocate_blocks;
-    int* info_result = get_diskinfo(argv[1]);
-    blocksize = info_result[0];
-    blockcount = info_result[1];
-    fat_starts = info_result[2];
-    fat_blocks = info_result[3];
-    root_dir_start = info_result[4];
-    root_dir_blocks = info_result[5];
-    free_blocks = info_result[6];
-    reserve_blocks = info_result[7];
-    allocate_blocks = info_result[8];
+    get_diskinfo(argv[1]);
 
     printf("Super block information: \n");
 
@@ -157,6 +149,8 @@ void diskinfo(int argc, char* argv[]){
     printf("Reserved Blocks: %d\n", reserve_blocks);
     printf("Allocated Blocks: %d\n", allocate_blocks);
 
+    release_img();
+
 }
 
 struct __attribute__((__packed__)) dir_entry_timedate_t {
@@ -178,24 +172,7 @@ void disklist(int argc, char* argv[]){
     char* dirname = argv[2];
     printf("dirname: %s\n", dirname);
 
-    int blocksize, blockcount, fat_starts, fat_blocks, root_dir_start, root_dir_blocks;
-    int free_blocks, reserve_blocks, allocate_blocks;
-    int* info_result = get_diskinfo(argv[1]);
-    blocksize = info_result[0];
-    blockcount = info_result[1];
-    fat_starts = info_result[2];
-    fat_blocks = info_result[3];
-    root_dir_start = info_result[4];
-    root_dir_blocks = info_result[5];
-    free_blocks = info_result[6];
-    reserve_blocks = info_result[7];
-    allocate_blocks = info_result[8];
-
-    int fd = open(argv[1], O_RDWR);
-    struct stat buffer;
-    fstat(fd, &buffer);
-
-    void* address=mmap(NULL, buffer.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    get_diskinfo(argv[1]);
 
     char status;
     int starting_block, number_block, file_size;
