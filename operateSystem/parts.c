@@ -9,6 +9,7 @@
 #include <sys/mman.h>
 #include <fcntl.h>
 #include <unistd.h> 
+#include <math.h>
 
 
 struct info{
@@ -273,7 +274,122 @@ void disklist(int argc, char* argv[]){
 
     
 
-    // copy to local
+    // put file to fat system
+
+    char* localf = "example.c";
+    int localfd = open(localf, O_RDWR);
+    struct stat local_buffer;
+    fstat(localfd, &local_buffer);
+
+    void* local_address=mmap(NULL, local_buffer.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, localfd, 0);
+    printf("local file size: %lld\n", local_buffer.st_size);
+
+    int block_need = (int)ceil((float)local_buffer.st_size/blocksize);
+    // int block_need = 100000;
+    printf("block needed: %d\n", block_need); 
+
+    // 循环遍历block Fat 找到block_need 个block number (即fat的index)如果没有，那就说，空间不够了
+    // 检查directory entry 还有没有空闲的了(后做)
+    
+    int local_free = 0;
+    int fat_free[100];
+    void* fat_addr = address + fat_starts * blocksize;
+    for (int i = 0; i < fat_blocks * blocksize / 4; i++){
+        int fat_item_value;
+        void* fat_item_addr = fat_addr + i * 4;
+        memcpy(&fat_item_value, fat_item_addr, 4);
+        fat_item_value = htonl(fat_item_value);
+        if (fat_item_value == 0){
+            fat_free[local_free] = i;
+            local_free += 1;
+        }
+        if (local_free == block_need)
+            break;
+    }
+    if (local_free != block_need){
+        printf("no space\n");
+    }
+
+    // for (int i=0; i<local_free; i++){
+    //     printf("blcok free number: %d\n", fat_free[i]);
+    // }
+
+    // 拷贝内容到对应的block
+    for (int i=0; i<local_free; i++){
+        if (i == (block_need-1)){
+            int left = local_buffer.st_size - (block_need-1)*blocksize;
+            memcpy(address + fat_free[i]*blocksize, local_address + i*blocksize, left);
+        }
+        else{
+            memcpy(address + fat_free[i]*blocksize, local_address + i*blocksize, blocksize);
+        }
+    }
+
+    // 更新fat
+    for (int i=0; i<local_free; i++){
+        int blocknum = fat_free[i];
+        if (i+1<local_free){
+            *(int*)(fat_addr+4*blocknum) = ntohl(fat_free[i+1]);
+        }
+        else {
+            *(int*)(fat_addr+4*blocknum) = ntohl(0xFFFFFFFF);
+        }
+    }
+
+    // for (int i=0; i<local_free; i++){
+    //     printf("blocknum: %d, block next num: %d\n", fat_free[i], htonl(*(int*)(fat_addr+fat_free[i]*4)));
+    // }
+
+    // 更新directory entry
+    void* free_d_entry = NULL;
+    int find = 0;
+    for(int i=0; i<root_dir_blocks*blocksize/64; i++){
+        free_d_entry = root_start_addr + i * 64;
+        memcpy(&status, free_d_entry, 1);
+        if ((status&0x01) == 0) {
+            find = 1;
+            break;
+        }
+    }
+    if (!find){
+        printf("can find drectory entry");
+    }
+
+    char f_status = 0x03;
+    int start_block = ntohl(fat_free[0]);
+    int fsize = ntohl(local_buffer.st_size);
+    int block_num = ntohl(block_need);
+    time_t now;
+    struct tm *timeinfo;
+    time(&now);
+    timeinfo = localtime(&now);
+    struct dir_entry_timedate_t t;
+    t.year = ntohs(timeinfo->tm_year+1900);
+    t.month = timeinfo->tm_mon + 1;
+    t.day = timeinfo->tm_mday;
+    t.hour = timeinfo->tm_hour;
+    t.minute = timeinfo->tm_min;
+    t.second = timeinfo->tm_sec;
+
+    memcpy(free_d_entry, &f_status, sizeof(f_status));
+    memcpy(free_d_entry+1, &start_block, 4);
+    memcpy(free_d_entry+5, &block_num, 4);
+    memcpy(free_d_entry+9, &fsize, 4);
+    memcpy(free_d_entry+13, &(t), sizeof(t));
+    memcpy(free_d_entry+20, &(t), sizeof(t));
+    memset(free_d_entry+27, '\0', 31);
+    memcpy(free_d_entry+27, localf, strlen(localf));
+
+    // 这个做完了，通过上一个程序检验，看看这个文件能取出来不
+
+    // 做递归找目录的程序
+
+
+    //整理代码，把公用的变量当做全局变量
+
+    munmap(local_address, local_buffer.st_size);
+    close(localfd);
+
 
     munmap(address,buffer.st_size);
     close(fd);
