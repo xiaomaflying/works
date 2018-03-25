@@ -12,19 +12,13 @@
 #include <math.h>
 
 
-struct info{
-    char c;
-    int i;
-    short j;
-};
-
-
 char** directory_parts(char* str){
     char a[100];
     strcpy(a, str);
-    char** parts = malloc(32*sizeof(char*));
-    for (int i=0; i<32; i++){
-        parts[i] = (char*)malloc(32*sizeof(char));
+    char** parts = malloc(100*sizeof(void*));
+    for (int i=0; i<100; i++){
+        parts[i] = (char*)malloc(100*sizeof(char));
+        memset(parts[i], '\0', 100);
     }
 
     char *token = strtok(a, "/");
@@ -32,7 +26,8 @@ char** directory_parts(char* str){
    
     while (token != NULL)
     {
-        parts[index++] = token;
+        // parts[index++] = token;
+        memcpy(parts[index++], token, strlen(token));
         token = strtok(NULL, "/");
     }
     return parts;
@@ -40,7 +35,6 @@ char** directory_parts(char* str){
 
 int directory_length(char* str){
     int length = 0;
-    // printf("%lu\n", strlen(str));
     for (int i=0; i<strlen(str); i++){
         if (str[i] == '/'){
             length++;
@@ -49,6 +43,11 @@ int directory_length(char* str){
     return length;
 }
 
+char* dir_basename(char* path){
+    char** parts = directory_parts(path);
+    int length = directory_length(path);
+    return parts[length-1];
+}
 
 // global variables; using function get_distinfo to init them
 
@@ -59,7 +58,8 @@ void* address;  // fat system img start address
 int blocksize, blockcount, fat_starts, fat_blocks, root_dir_start, root_dir_blocks;
 int free_blocks, reserve_blocks, allocate_blocks;
 
-void* fat_addr;  // fat table address
+void* fat_addr;  // fat table start address
+void* root_start_addr; // root directory start address
 
 
 // init the global variables
@@ -91,6 +91,7 @@ void get_diskinfo(char* image){
     int _reserve_blocks = 0;
     int _allocate_blocks = 0;
 
+    root_start_addr = address + root_dir_start*blocksize;
     fat_addr = address + fat_starts * blocksize;
     int fat_item_value;
     void* fat_item_addr = NULL;
@@ -177,14 +178,12 @@ void disklist(int argc, char* argv[]){
     char status;
     int starting_block, number_block, file_size;
     char ftype;
-    // short int year;
-    // char month, day, hour, minute, second;
+
     struct dir_entry_timedate_t ct;
     struct dir_entry_timedate_t mt;
     void* root_item_addr = NULL;
     char file_name[32];
 
-    void* root_start_addr = address + root_dir_start*blocksize;
     for(int i=0; i<root_dir_blocks*blocksize/64; i++){
         root_item_addr = root_start_addr + i * 64;
         memcpy(&status, root_item_addr, 1);
@@ -207,53 +206,110 @@ void disklist(int argc, char* argv[]){
 
         memcpy(&ct, root_item_addr+13, 7);
         ct.year = htons(ct.year);
-        // printf("create time: %d-%02d-%02d %02d:%02d:%02d\n", ct.year, ct.month, ct.day, ct.hour, ct.minute, ct.second);
 
         memcpy(&mt, root_item_addr+20, 7);
         mt.year = htons(mt.year);
-        // printf("modify time: %d-%02d-%02d %02d:%02d:%02d\n", mt.year, mt.month, mt.day, mt.hour, mt.minute, mt.second);
 
         memcpy(&file_name, root_item_addr+27, 31);
 
         printf("%c %10d %30s %d/%02d/%02d %02d:%02d:%02d\n", ftype, file_size, file_name, mt.year, mt.month, mt.day, mt.hour, mt.minute, mt.second);
-        // printf("name: %s\n", file_name);
-
-
-        // copy to local 
-        if (strcmp(file_name, "disk.img.gz") == 0) {
-            void* fat_start_addr = address + blocksize*fat_starts;
-            int index = 0;
-            int start = starting_block;
-            char* localfile = "disk.img.gz";
-            void* buf = malloc(file_size);
-            printf("blocksize: %d\n", number_block);
-            while (index < number_block){
-                int fat_value = htonl(*(int*)(fat_start_addr + 4*start));
-                printf("%d\n", fat_value);
-                if (index == (number_block-1)){
-                    int left = file_size - (number_block-1)*blocksize;
-                    memcpy(buf+index*blocksize, address+start*blocksize, left);
-                }
-                else{
-                    memcpy(buf+index*blocksize, address+start*blocksize, blocksize);
-                }
-                index++;
-                start = fat_value;
-            }
-
-            // write memory data to local file
-            FILE* stream;
-            stream = fopen(localfile, "w");
-            fwrite(buf, 1, file_size, stream);
-            fclose(stream);
-        }
     }
 
-    
+    release_img();
+}
 
-    // put file to fat system
 
-    char* localf = "example.c";
+void diskget(int argc, char* argv[]){
+    if (argc != 4){
+		fprintf(stderr, "usage: ./diskget test.img /sub_dir/foo2.txt foo.txt\n");
+		exit(0);
+    }
+    char* filepath = argv[2];
+    char* basename = dir_basename(filepath);
+    char* localpath = argv[3];
+    printf("base name :%s, localpath: %s\n", basename, localpath);
+    get_diskinfo(argv[1]);
+
+    char status;
+    int starting_block, number_block, file_size;
+    char ftype='F';
+
+    int bool_find = 0;
+
+    struct dir_entry_timedate_t ct;
+    struct dir_entry_timedate_t mt;
+    void* root_item_addr = NULL;
+    char file_name[32];
+
+    for(int i=0; i<root_dir_blocks*blocksize/64; i++){
+        root_item_addr = root_start_addr + i * 64;
+        memcpy(&status, root_item_addr, 1);
+        memset(file_name, '\0', 32);
+        memcpy(&file_name, root_item_addr+27, 31);
+        if ((status&0x01) == 0 || strcmp(basename, file_name) != 0) {
+            continue;
+        }
+        memcpy(&starting_block, root_item_addr+1, 4);
+        starting_block = htonl(starting_block);
+        memcpy(&number_block, root_item_addr+5, 4);
+        number_block = htonl(number_block);
+        memcpy(&file_size, root_item_addr+9, 4);
+        file_size = htonl(file_size);
+        // printf("index: %d, status %d, start block: %d, block number: %d, file size: %d\n", i, status, starting_block, number_block, file_size);
+
+        memcpy(&ct, root_item_addr+13, 7);
+        ct.year = htons(ct.year);
+
+        memcpy(&mt, root_item_addr+20, 7);
+        mt.year = htons(mt.year);
+
+        printf("%c %10d %30s %d/%02d/%02d %02d:%02d:%02d\n", ftype, file_size, file_name, mt.year, mt.month, mt.day, mt.hour, mt.minute, mt.second);
+        bool_find = 1;
+        break;
+    }
+    if (!bool_find){
+        printf("File not found\n");
+        exit(0);
+    }
+
+    // copy to local 
+    void* fat_start_addr = address + blocksize*fat_starts;
+    int index = 0;
+    int start = starting_block;
+    void* buf = malloc(file_size);
+    printf("blocksize: %d\n", number_block);
+    while (index < number_block){
+        int fat_value = htonl(*(int*)(fat_start_addr + 4*start));
+        if (index == (number_block-1)){
+            int left = file_size - (number_block-1)*blocksize;
+            memcpy(buf+index*blocksize, address+start*blocksize, left);
+        }
+        else{
+            memcpy(buf+index*blocksize, address+start*blocksize, blocksize);
+        }
+        index++;
+        start = fat_value;
+    }
+
+    // write memory data to local file
+    FILE* stream;
+    stream = fopen(localpath, "w");
+    fwrite(buf, 1, file_size, stream);
+    fclose(stream);
+
+    release_img();
+}
+
+
+void diskput(int argc, char* argv[]){
+    if (argc != 4){
+		fprintf(stderr, "usage: ./diskput test.img foo.txt /sub_dir/foo3.txt\n");
+		exit(0);
+    }
+    get_diskinfo(argv[1]);
+
+    char* localf = argv[2];
+    char* basename = dir_basename(argv[3]);
     int localfd = open(localf, O_RDWR);
     struct stat local_buffer;
     fstat(localfd, &local_buffer);
@@ -265,9 +321,6 @@ void disklist(int argc, char* argv[]){
     // int block_need = 100000;
     printf("block needed: %d\n", block_need); 
 
-    // 循环遍历block Fat 找到block_need 个block number (即fat的index)如果没有，那就说，空间不够了
-    // 检查directory entry 还有没有空闲的了(后做)
-    
     int local_free = 0;
     int fat_free[100];
     void* fat_addr = address + fat_starts * blocksize;
@@ -291,7 +344,7 @@ void disklist(int argc, char* argv[]){
     //     printf("blcok free number: %d\n", fat_free[i]);
     // }
 
-    // 拷贝内容到对应的block
+    // copy data to blocks
     for (int i=0; i<local_free; i++){
         if (i == (block_need-1)){
             int left = local_buffer.st_size - (block_need-1)*blocksize;
@@ -302,7 +355,7 @@ void disklist(int argc, char* argv[]){
         }
     }
 
-    // 更新fat
+    // update fat
     for (int i=0; i<local_free; i++){
         int blocknum = fat_free[i];
         if (i+1<local_free){
@@ -317,9 +370,10 @@ void disklist(int argc, char* argv[]){
     //     printf("blocknum: %d, block next num: %d\n", fat_free[i], htonl(*(int*)(fat_addr+fat_free[i]*4)));
     // }
 
-    // 更新directory entry
+    // update directory entry
     void* free_d_entry = NULL;
     int find = 0;
+    char status;
     for(int i=0; i<root_dir_blocks*blocksize/64; i++){
         free_d_entry = root_start_addr + i * 64;
         memcpy(&status, free_d_entry, 1);
@@ -355,38 +409,9 @@ void disklist(int argc, char* argv[]){
     memcpy(free_d_entry+13, &(t), sizeof(t));
     memcpy(free_d_entry+20, &(t), sizeof(t));
     memset(free_d_entry+27, '\0', 31);
-    memcpy(free_d_entry+27, localf, strlen(localf));
+    memcpy(free_d_entry+27, basename, strlen(basename));
 
-    // 这个做完了，通过上一个程序检验，看看这个文件能取出来不
-
-    // 做递归找目录的程序
-
-
-    //整理代码，把公用的变量当做全局变量
-
-    munmap(local_address, local_buffer.st_size);
-    close(localfd);
-
-
-    munmap(address,buffer.st_size);
-    close(fd);
-}
-
-
-void diskget(int argc, char* argv[]){
-    if (argc != 4){
-		fprintf(stderr, "usage: ./diskget test.img /sub_dir/foo2.txt foo.txt\n");
-		exit(0);
-    }
-}
-
-
-void diskput(int argc, char* argv[]){
-    if (argc != 4){
-		fprintf(stderr, "usage: ./diskput test.img foo.txt /sub_dir/foo3.txt\n");
-		exit(0);
-    }
-
+    release_img();
 }
 
 
