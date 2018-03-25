@@ -114,6 +114,14 @@ void get_diskinfo(char* image){
 
 }
 
+int block_stat(int blocknum){
+    void* fat_entry_addr = fat_addr + blocknum * 4;
+    int value;
+    memcpy(&value, fat_entry_addr, 4);
+    value = htonl(value);
+    return value;
+}
+
 
 void release_img(){
     munmap(address, buffer.st_size);
@@ -126,8 +134,6 @@ void diskinfo(int argc, char* argv[]){
 		fprintf(stderr, "usage: ./diskinfo test.img\n");
 		exit(0);
     }
-
-    get_diskinfo(argv[1]);
 
     printf("Super block information: \n");
 
@@ -150,8 +156,6 @@ void diskinfo(int argc, char* argv[]){
     printf("Reserved Blocks: %d\n", reserve_blocks);
     printf("Allocated Blocks: %d\n", allocate_blocks);
 
-    release_img();
-
 }
 
 struct __attribute__((__packed__)) dir_entry_timedate_t {
@@ -161,6 +165,17 @@ struct __attribute__((__packed__)) dir_entry_timedate_t {
     uint8_t hour; 
     uint8_t minute; 
     uint8_t second;
+};
+
+struct __attribute__((__packed__)) dir_entry_t {
+    uint8_t status;
+    uint32_t starting_block;
+    uint32_t block_count;
+    uint32_t size;
+    struct dir_entry_timedate_t modify_time;
+    struct dir_entry_timedate_t create_time;
+    uint8_t filename[31];
+    uint8_t unused[6];
 };
 
 
@@ -173,8 +188,6 @@ void disklist(int argc, char* argv[]){
     char* dirname = argv[2];
     printf("dirname: %s\n", dirname);
 
-    get_diskinfo(argv[1]);
-
     char status;
     int starting_block, number_block, file_size;
     char ftype;
@@ -184,38 +197,80 @@ void disklist(int argc, char* argv[]){
     void* root_item_addr = NULL;
     char file_name[32];
 
-    for(int i=0; i<root_dir_blocks*blocksize/64; i++){
-        root_item_addr = root_start_addr + i * 64;
-        memcpy(&status, root_item_addr, 1);
-        if ((status&0x01) == 0) {
-            continue;
+    if (strlen(dirname) == 1 && strcmp(dirname, "/") == 0){
+        // root directory
+        for(int i=0; i<root_dir_blocks*blocksize/64; i++){
+            root_item_addr = root_start_addr + i * 64;
+            memcpy(&status, root_item_addr, 1);
+            if ((status&0x01) == 0) {
+                continue;
+            }
+            if ((status&0x02) == 0x02) {
+                ftype = 'F';
+            }
+            else{
+                ftype = 'D';
+            }
+            memcpy(&starting_block, root_item_addr+1, 4);
+            starting_block = htonl(starting_block);
+            memcpy(&number_block, root_item_addr+5, 4);
+            number_block = htonl(number_block);
+            memcpy(&file_size, root_item_addr+9, 4);
+            file_size = htonl(file_size);
+            // printf("index: %d, status %d, start block: %d, block number: %d, file size: %d\n", i, status, starting_block, number_block, file_size);
+
+            memcpy(&ct, root_item_addr+13, 7);
+            ct.year = htons(ct.year);
+
+            memcpy(&mt, root_item_addr+20, 7);
+            mt.year = htons(mt.year);
+
+            memcpy(&file_name, root_item_addr+27, 31);
+
+            printf("%c %10d %30s %d/%02d/%02d %02d:%02d:%02d\n", ftype, file_size, file_name, mt.year, mt.month, mt.day, mt.hour, mt.minute, mt.second);
         }
-        if ((status&0x02) == 0x02) {
-            ftype = 'F';
-        }
-        else{
-            ftype = 'D';
-        }
-        memcpy(&starting_block, root_item_addr+1, 4);
-        starting_block = htonl(starting_block);
-        memcpy(&number_block, root_item_addr+5, 4);
-        number_block = htonl(number_block);
-        memcpy(&file_size, root_item_addr+9, 4);
-        file_size = htonl(file_size);
-        // printf("index: %d, status %d, start block: %d, block number: %d, file size: %d\n", i, status, starting_block, number_block, file_size);
-
-        memcpy(&ct, root_item_addr+13, 7);
-        ct.year = htons(ct.year);
-
-        memcpy(&mt, root_item_addr+20, 7);
-        mt.year = htons(mt.year);
-
-        memcpy(&file_name, root_item_addr+27, 31);
-
-        printf("%c %10d %30s %d/%02d/%02d %02d:%02d:%02d\n", ftype, file_size, file_name, mt.year, mt.month, mt.day, mt.hour, mt.minute, mt.second);
     }
+    else {
+        // sub directory
+        printf("%s\n", "sub directory");
+        char** dir_parts = directory_parts(dirname);
+        int part_length = directory_length(dirname);
+        int index = 0;
+        int dir_blocks_num = root_dir_blocks; 
+        void* dir_entry = root_start_addr;
+        while (index<part_length){
+            char* name = dir_parts[index];
+            int bool_find = 0;
+            for(int i=0; i<dir_blocks_num*blocksize/64; i++){
+                void* item_entry = dir_entry + i * 64;
+                memcpy(&status, item_entry, 1);
+                if ((status&0x01) == 0) {
+                    continue;
+                }
 
-    release_img();
+                memset(file_name, '\0', 32);
+                memcpy(&file_name, item_entry+27, 31);
+                if ((status&0x02) != 0x02 && strcmp(file_name, name)==0) {
+                    bool_find = 1;
+                    memcpy(&starting_block, item_entry+1, 4);
+                    starting_block = htonl(starting_block);
+                    memcpy(&number_block, item_entry+5, 4);
+                    number_block = htonl(number_block);
+                    break;
+                }
+            }
+            if (!bool_find){
+                printf("dirname %s not found\n", dirname);
+                exit(0);
+            }
+            else{
+                // update pointers
+                index++;
+                dir_blocks_num = number_block;
+                dir_entry = address + starting_block*blocksize;
+            }
+        }
+    }
 }
 
 
@@ -323,7 +378,7 @@ void diskput(int argc, char* argv[]){
 
     int local_free = 0;
     int fat_free[100];
-    void* fat_addr = address + fat_starts * blocksize;
+    // void* fat_addr = address + fat_starts * blocksize;
     for (int i = 0; i < fat_blocks * blocksize / 4; i++){
         int fat_item_value;
         void* fat_item_addr = fat_addr + i * 4;
@@ -415,7 +470,17 @@ void diskput(int argc, char* argv[]){
 }
 
 
+void disktest(int argc, char* argv[]){
+    printf("block stat %s: %d\n", argv[2],  block_stat(atoi(argv[2])));
+}
+
+
 int main(int argc, char* argv[]) {
+    if (argc < 2){
+        fprintf(stderr, "at least 2 arguments: ./xxx_command test.img\n");
+        exit(0);
+    }
+    get_diskinfo(argv[1]);
 #if defined(PART1)
 	diskinfo(argc, argv); 
 #elif defined(PART2)
@@ -424,8 +489,11 @@ int main(int argc, char* argv[]) {
 	diskget(argc, argv); 
 #elif defined(PART4)
 	diskput(argc,argv); 
+#elif defined(TEST)
+    disktest(argc,argv); 
 #else
 # 	error "PART[1234] must be defined" 
 #endif
+    release_img();
 	return 0;
 }
