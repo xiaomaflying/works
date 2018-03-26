@@ -465,9 +465,52 @@ void diskput(int argc, char* argv[]){
     release_img();
 }
 
+void format_timedate(struct dir_entry_timedate_t* t){
+    printf("%d/%02d/%02d %02d:%02d:%02d\n", t->year, t->month, t->day, t->hour, t->minute, t->second);
+}
+
+
+void load_dir_entry(void* start, struct dir_entry_t* dir_entry){
+    memcpy(dir_entry, start, sizeof(struct dir_entry_t));
+    dir_entry->starting_block = htonl(dir_entry->starting_block);
+    dir_entry->block_count = htonl(dir_entry->block_count);
+    dir_entry->size = htonl(dir_entry->size);
+    dir_entry->create_time.year = htons(dir_entry->create_time.year);
+    dir_entry->modify_time.year = htons(dir_entry->modify_time.year);
+}
+
+void dump_dir_entry(void* dest, struct dir_entry_t* dir_entry){
+    dir_entry->starting_block = ntohl(dir_entry->starting_block);
+    dir_entry->block_count = ntohl(dir_entry->block_count);
+    dir_entry->size = ntohl(dir_entry->size);
+    dir_entry->create_time.year = ntohs(dir_entry->create_time.year);
+    dir_entry->modify_time.year = ntohs(dir_entry->modify_time.year);
+    memcpy(dest, dir_entry, sizeof(struct dir_entry_t));
+}
+
+void format_dir_entry(struct dir_entry_t* dir_entry){
+    printf(
+        "status: %d, starting_block: %d, block_count: %d, size: %d, filename: %s\
+        \n", dir_entry->status, dir_entry->starting_block, \
+        dir_entry->block_count, dir_entry->size, dir_entry->filename);
+    format_timedate(&dir_entry->create_time);
+    format_timedate(&dir_entry->modify_time);
+}
+
 
 void disktest(int argc, char* argv[]){
-    printf("block stat %s: %d\n", argv[2],  block_stat(atoi(argv[2])));
+    // printf("block stat %s: %d\n", argv[2],  block_stat(atoi(argv[2])));
+    // int block_start_num = 200;
+
+    void* start = address + root_dir_start * blocksize + 64*1;
+    struct dir_entry_t* dir_entry = (struct dir_entry_t*)malloc(sizeof(struct dir_entry_t));
+    load_dir_entry(start, dir_entry);
+    format_dir_entry(dir_entry);
+
+
+    dump_dir_entry(start, dir_entry);
+    load_dir_entry(start, dir_entry);
+    format_dir_entry(dir_entry);
 }
 
 
