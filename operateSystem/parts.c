@@ -12,6 +12,58 @@
 #include <math.h>
 
 
+struct __attribute__((__packed__)) dir_entry_timedate_t {
+    uint16_t year;
+    uint8_t month;
+    uint8_t day;
+    uint8_t hour; 
+    uint8_t minute; 
+    uint8_t second;
+};
+
+struct __attribute__((__packed__)) dir_entry_t {
+    uint8_t status;
+    uint32_t starting_block;
+    uint32_t block_count;
+    uint32_t size;
+    struct dir_entry_timedate_t modify_time;
+    struct dir_entry_timedate_t create_time;
+    uint8_t filename[31];
+    uint8_t unused[6];
+};
+
+void format_timedate(struct dir_entry_timedate_t* t){
+    printf("%d/%02d/%02d %02d:%02d:%02d\n", t->year, t->month, t->day, t->hour, t->minute, t->second);
+}
+
+void load_dir_entry(void* start, struct dir_entry_t* dir_entry){
+    memcpy(dir_entry, start, sizeof(struct dir_entry_t));
+    dir_entry->starting_block = htonl(dir_entry->starting_block);
+    dir_entry->block_count = htonl(dir_entry->block_count);
+    dir_entry->size = htonl(dir_entry->size);
+    dir_entry->create_time.year = htons(dir_entry->create_time.year);
+    dir_entry->modify_time.year = htons(dir_entry->modify_time.year);
+}
+
+void dump_dir_entry(void* dest, struct dir_entry_t* dir_entry){
+    dir_entry->starting_block = ntohl(dir_entry->starting_block);
+    dir_entry->block_count = ntohl(dir_entry->block_count);
+    dir_entry->size = ntohl(dir_entry->size);
+    dir_entry->create_time.year = ntohs(dir_entry->create_time.year);
+    dir_entry->modify_time.year = ntohs(dir_entry->modify_time.year);
+    memcpy(dest, dir_entry, sizeof(struct dir_entry_t));
+}
+
+void format_dir_entry(struct dir_entry_t* dir_entry){
+    printf(
+        "status: %d, starting_block: %d, block_count: %d, size: %d, filename: %s\
+        \n", dir_entry->status, dir_entry->starting_block, \
+        dir_entry->block_count, dir_entry->size, dir_entry->filename);
+    format_timedate(&dir_entry->create_time);
+    format_timedate(&dir_entry->modify_time);
+}
+
+
 char** directory_parts(char* str){
     char a[100];
     strcpy(a, str);
@@ -161,26 +213,6 @@ void diskinfo(int argc, char* argv[]){
 
 }
 
-struct __attribute__((__packed__)) dir_entry_timedate_t {
-    uint16_t year;
-    uint8_t month;
-    uint8_t day;
-    uint8_t hour; 
-    uint8_t minute; 
-    uint8_t second;
-};
-
-struct __attribute__((__packed__)) dir_entry_t {
-    uint8_t status;
-    uint32_t starting_block;
-    uint32_t block_count;
-    uint32_t size;
-    struct dir_entry_timedate_t modify_time;
-    struct dir_entry_timedate_t create_time;
-    uint8_t filename[31];
-    uint8_t unused[6];
-};
-
 
 void disklist(int argc, char* argv[]){
     if (argc != 3){
@@ -191,12 +223,6 @@ void disklist(int argc, char* argv[]){
     char* dirname = argv[2];
     printf("dirname: %s\n", dirname);
 
-    char status;
-    int starting_block, number_block, file_size;
-    char ftype;
-
-    struct dir_entry_timedate_t ct;
-    struct dir_entry_timedate_t mt;
     char file_name[32];
 
     char** dir_parts = directory_parts(dirname);
@@ -207,8 +233,11 @@ void disklist(int argc, char* argv[]){
     while (index<part_length){
         char* name = dir_parts[index];
         int bool_find = 0;
+        int starting_block, number_block;
         for(int i=0; i<dir_blocks_num*blocksize/64; i++){
             void* item_entry = dir_entry + i * 64;
+            char status;
+
             memcpy(&status, item_entry, 1);
             if ((status&0x01) == 0) {
                 continue;
@@ -239,6 +268,12 @@ void disklist(int argc, char* argv[]){
 
     for(int i=0; i<dir_blocks_num*blocksize/64; i++){
         void* root_item_addr = dir_entry + i * 64;
+        struct dir_entry_t* dir_entry = (struct dir_entry_t*)malloc(sizeof(struct dir_entry_t));
+        load_dir_entry(root_item_addr, dir_entry);
+
+        int status = dir_entry->status;
+        char ftype;
+
         memcpy(&status, root_item_addr, 1);
         if ((status&0x01) == 0) {
             continue;
@@ -249,23 +284,11 @@ void disklist(int argc, char* argv[]){
         else{
             ftype = 'D';
         }
-        memcpy(&starting_block, root_item_addr+1, 4);
-        starting_block = htonl(starting_block);
-        memcpy(&number_block, root_item_addr+5, 4);
-        number_block = htonl(number_block);
-        memcpy(&file_size, root_item_addr+9, 4);
-        file_size = htonl(file_size);
-        // printf("index: %d, status %d, start block: %d, block number: %d, file size: %d\n", i, status, starting_block, number_block, file_size);
+        struct dir_entry_timedate_t mt = dir_entry->modify_time;
 
-        memcpy(&ct, root_item_addr+13, 7);
-        ct.year = htons(ct.year);
-
-        memcpy(&mt, root_item_addr+20, 7);
-        mt.year = htons(mt.year);
-
-        memcpy(&file_name, root_item_addr+27, 31);
-
-        printf("%c %10d %30s %d/%02d/%02d %02d:%02d:%02d\n", ftype, file_size, file_name, mt.year, mt.month, mt.day, mt.hour, mt.minute, mt.second);
+        printf(
+            "%c %10d %30s %d/%02d/%02d %02d:%02d:%02d\n", \
+            ftype, dir_entry->size, dir_entry->filename, mt.year, mt.month, mt.day, mt.hour, mt.minute, mt.second);
     }
 }
 
@@ -369,12 +392,12 @@ void diskput(int argc, char* argv[]){
     printf("local file size: %lld\n", local_buffer.st_size);
 
     int block_need = (int)ceil((float)local_buffer.st_size/blocksize);
-    // int block_need = 100000;
     printf("block needed: %d\n", block_need); 
 
     int local_free = 0;
     int fat_free[100];
-    // void* fat_addr = address + fat_starts * blocksize;
+
+    // find the enough free blocks to store the file
     for (int i = 0; i < fat_blocks * blocksize / 4; i++){
         int fat_item_value;
         void* fat_item_addr = fat_addr + i * 4;
@@ -389,6 +412,7 @@ void diskput(int argc, char* argv[]){
     }
     if (local_free != block_need){
         printf("no space\n");
+        exit(0);
     }
 
     // for (int i=0; i<local_free; i++){
@@ -421,7 +445,7 @@ void diskput(int argc, char* argv[]){
     //     printf("blocknum: %d, block next num: %d\n", fat_free[i], htonl(*(int*)(fat_addr+fat_free[i]*4)));
     // }
 
-    // update directory entry
+    // find subdirectory and update directory entry
     void* free_d_entry = NULL;
     int find = 0;
     char status;
@@ -465,43 +489,40 @@ void diskput(int argc, char* argv[]){
     release_img();
 }
 
-void format_timedate(struct dir_entry_timedate_t* t){
-    printf("%d/%02d/%02d %02d:%02d:%02d\n", t->year, t->month, t->day, t->hour, t->minute, t->second);
+void test_insert_dir_entry(){
+    int start_block = 200;
+    struct dir_entry_t* dir_entry = (struct dir_entry_t*)malloc(sizeof(struct dir_entry_t));
+    dir_entry->status = 5;
+    memcpy(dir_entry->filename, "subdirectory", strlen("subdirectory"));
+    dir_entry->starting_block = start_block;
+    dir_entry->size = 64;
+    dir_entry->block_count = 1;
+
+    struct dir_entry_timedate_t* ct = &dir_entry->create_time;
+    ct->year = 2018;
+    ct->month = 1;
+    ct->day = 1;
+    ct->hour = 1;
+    ct->minute = 1;
+    ct->second = 1;
+
+    struct dir_entry_timedate_t* mt = &dir_entry->modify_time;
+    mt->year = 2018;
+    mt->month = 1;
+    mt->day = 1;
+    mt->hour = 1;
+    mt->minute = 1;
+    mt->second = 1;
+
+    void* start = address + root_dir_start * blocksize + 64*5;
+    dump_dir_entry(start, dir_entry);
+
+    // update fat
+    *(int*)(fat_addr+4*start_block) = ntohl(0xFFFFFFFF);
+    free(dir_entry);
 }
 
-
-void load_dir_entry(void* start, struct dir_entry_t* dir_entry){
-    memcpy(dir_entry, start, sizeof(struct dir_entry_t));
-    dir_entry->starting_block = htonl(dir_entry->starting_block);
-    dir_entry->block_count = htonl(dir_entry->block_count);
-    dir_entry->size = htonl(dir_entry->size);
-    dir_entry->create_time.year = htons(dir_entry->create_time.year);
-    dir_entry->modify_time.year = htons(dir_entry->modify_time.year);
-}
-
-void dump_dir_entry(void* dest, struct dir_entry_t* dir_entry){
-    dir_entry->starting_block = ntohl(dir_entry->starting_block);
-    dir_entry->block_count = ntohl(dir_entry->block_count);
-    dir_entry->size = ntohl(dir_entry->size);
-    dir_entry->create_time.year = ntohs(dir_entry->create_time.year);
-    dir_entry->modify_time.year = ntohs(dir_entry->modify_time.year);
-    memcpy(dest, dir_entry, sizeof(struct dir_entry_t));
-}
-
-void format_dir_entry(struct dir_entry_t* dir_entry){
-    printf(
-        "status: %d, starting_block: %d, block_count: %d, size: %d, filename: %s\
-        \n", dir_entry->status, dir_entry->starting_block, \
-        dir_entry->block_count, dir_entry->size, dir_entry->filename);
-    format_timedate(&dir_entry->create_time);
-    format_timedate(&dir_entry->modify_time);
-}
-
-
-void disktest(int argc, char* argv[]){
-    // printf("block stat %s: %d\n", argv[2],  block_stat(atoi(argv[2])));
-    // int block_start_num = 200;
-
+void test_load_dump_dir_entry(){
     void* start = address + root_dir_start * blocksize + 64*1;
     struct dir_entry_t* dir_entry = (struct dir_entry_t*)malloc(sizeof(struct dir_entry_t));
     load_dir_entry(start, dir_entry);
@@ -513,6 +534,11 @@ void disktest(int argc, char* argv[]){
     format_dir_entry(dir_entry);
 }
 
+void disktest(int argc, char* argv[]){
+    // printf("block stat %s: %d\n", argv[2],  block_stat(atoi(argv[2])));
+    // int block_start_num = 200;
+    test_insert_dir_entry();
+}
 
 int main(int argc, char* argv[]) {
     if (argc < 2){
