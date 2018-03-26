@@ -35,6 +35,9 @@ char** directory_parts(char* str){
 
 int directory_length(char* str){
     int length = 0;
+    if (strlen(str) == 1 && strcmp(str, "/") == 0){
+        return length;
+    }
     for (int i=0; i<strlen(str); i++){
         if (str[i] == '/'){
             length++;
@@ -194,82 +197,75 @@ void disklist(int argc, char* argv[]){
 
     struct dir_entry_timedate_t ct;
     struct dir_entry_timedate_t mt;
-    void* root_item_addr = NULL;
     char file_name[32];
 
-    if (strlen(dirname) == 1 && strcmp(dirname, "/") == 0){
-        // root directory
-        for(int i=0; i<root_dir_blocks*blocksize/64; i++){
-            root_item_addr = root_start_addr + i * 64;
-            memcpy(&status, root_item_addr, 1);
+    char** dir_parts = directory_parts(dirname);
+    int part_length = directory_length(dirname);
+    int index = 0;
+    int dir_blocks_num = root_dir_blocks; 
+    void* dir_entry = root_start_addr;
+    while (index<part_length){
+        char* name = dir_parts[index];
+        int bool_find = 0;
+        for(int i=0; i<dir_blocks_num*blocksize/64; i++){
+            void* item_entry = dir_entry + i * 64;
+            memcpy(&status, item_entry, 1);
             if ((status&0x01) == 0) {
                 continue;
             }
-            if ((status&0x02) == 0x02) {
-                ftype = 'F';
+
+            memset(file_name, '\0', 32);
+            memcpy(&file_name, item_entry+27, 31);
+            if ((status&0x02) != 0x02 && strcmp(file_name, name)==0) {
+                bool_find = 1;
+                memcpy(&starting_block, item_entry+1, 4);
+                starting_block = htonl(starting_block);
+                memcpy(&number_block, item_entry+5, 4);
+                number_block = htonl(number_block);
+                break;
             }
-            else{
-                ftype = 'D';
-            }
-            memcpy(&starting_block, root_item_addr+1, 4);
-            starting_block = htonl(starting_block);
-            memcpy(&number_block, root_item_addr+5, 4);
-            number_block = htonl(number_block);
-            memcpy(&file_size, root_item_addr+9, 4);
-            file_size = htonl(file_size);
-            // printf("index: %d, status %d, start block: %d, block number: %d, file size: %d\n", i, status, starting_block, number_block, file_size);
-
-            memcpy(&ct, root_item_addr+13, 7);
-            ct.year = htons(ct.year);
-
-            memcpy(&mt, root_item_addr+20, 7);
-            mt.year = htons(mt.year);
-
-            memcpy(&file_name, root_item_addr+27, 31);
-
-            printf("%c %10d %30s %d/%02d/%02d %02d:%02d:%02d\n", ftype, file_size, file_name, mt.year, mt.month, mt.day, mt.hour, mt.minute, mt.second);
+        }
+        if (!bool_find){
+            printf("dirname %s not found\n", dirname);
+            exit(0);
+        }
+        else{
+            // update pointers
+            index++;
+            dir_blocks_num = number_block;
+            dir_entry = address + starting_block*blocksize;
         }
     }
-    else {
-        // sub directory
-        printf("%s\n", "sub directory");
-        char** dir_parts = directory_parts(dirname);
-        int part_length = directory_length(dirname);
-        int index = 0;
-        int dir_blocks_num = root_dir_blocks; 
-        void* dir_entry = root_start_addr;
-        while (index<part_length){
-            char* name = dir_parts[index];
-            int bool_find = 0;
-            for(int i=0; i<dir_blocks_num*blocksize/64; i++){
-                void* item_entry = dir_entry + i * 64;
-                memcpy(&status, item_entry, 1);
-                if ((status&0x01) == 0) {
-                    continue;
-                }
 
-                memset(file_name, '\0', 32);
-                memcpy(&file_name, item_entry+27, 31);
-                if ((status&0x02) != 0x02 && strcmp(file_name, name)==0) {
-                    bool_find = 1;
-                    memcpy(&starting_block, item_entry+1, 4);
-                    starting_block = htonl(starting_block);
-                    memcpy(&number_block, item_entry+5, 4);
-                    number_block = htonl(number_block);
-                    break;
-                }
-            }
-            if (!bool_find){
-                printf("dirname %s not found\n", dirname);
-                exit(0);
-            }
-            else{
-                // update pointers
-                index++;
-                dir_blocks_num = number_block;
-                dir_entry = address + starting_block*blocksize;
-            }
+    for(int i=0; i<dir_blocks_num*blocksize/64; i++){
+        void* root_item_addr = dir_entry + i * 64;
+        memcpy(&status, root_item_addr, 1);
+        if ((status&0x01) == 0) {
+            continue;
         }
+        if ((status&0x02) == 0x02) {
+            ftype = 'F';
+        }
+        else{
+            ftype = 'D';
+        }
+        memcpy(&starting_block, root_item_addr+1, 4);
+        starting_block = htonl(starting_block);
+        memcpy(&number_block, root_item_addr+5, 4);
+        number_block = htonl(number_block);
+        memcpy(&file_size, root_item_addr+9, 4);
+        file_size = htonl(file_size);
+        // printf("index: %d, status %d, start block: %d, block number: %d, file size: %d\n", i, status, starting_block, number_block, file_size);
+
+        memcpy(&ct, root_item_addr+13, 7);
+        ct.year = htons(ct.year);
+
+        memcpy(&mt, root_item_addr+20, 7);
+        mt.year = htons(mt.year);
+
+        memcpy(&file_name, root_item_addr+27, 31);
+
+        printf("%c %10d %30s %d/%02d/%02d %02d:%02d:%02d\n", ftype, file_size, file_name, mt.year, mt.month, mt.day, mt.hour, mt.minute, mt.second);
     }
 }
 
