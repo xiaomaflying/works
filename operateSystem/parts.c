@@ -213,18 +213,8 @@ void diskinfo(int argc, char* argv[]){
 
 }
 
-
-void disklist(int argc, char* argv[]){
-    if (argc != 3){
-		fprintf(stderr, "usage: ./disklist test.img /sub_dir\n");
-		exit(0);
-    }
-
-    char* dirname = argv[2];
-    printf("dirname: %s\n", dirname);
-
+void* find_dir_entry_and_blocknum(char* dirname, int* blocknum){
     char file_name[32];
-
     char** dir_parts = directory_parts(dirname);
     int part_length = directory_length(dirname);
     int index = 0;
@@ -265,6 +255,23 @@ void disklist(int argc, char* argv[]){
             dir_entry = address + starting_block*blocksize;
         }
     }
+
+    *blocknum = dir_blocks_num;
+    return dir_entry;
+}
+
+
+void disklist(int argc, char* argv[]){
+    if (argc != 3){
+		fprintf(stderr, "usage: ./disklist test.img /sub_dir\n");
+		exit(0);
+    }
+
+    char* dirname = argv[2];
+    printf("dirname: %s\n", dirname);
+
+    int dir_blocks_num;
+    void* dir_entry = find_dir_entry_and_blocknum(dirname, &dir_blocks_num);
 
     for(int i=0; i<dir_blocks_num*blocksize/64; i++){
         void* root_item_addr = dir_entry + i * 64;
@@ -519,6 +526,27 @@ void test_insert_dir_entry(){
 
     // update fat
     *(int*)(fat_addr+4*start_block) = ntohl(0xFFFFFFFF);
+
+    // insert 2 files
+    void* file1_start = address + start_block*blocksize;
+    struct dir_entry_t* f1_entry = (struct dir_entry_t*)malloc(sizeof(struct dir_entry_t));
+    f1_entry->status=3;
+    f1_entry->size = 100;
+    char* fname1 = "file1.txt";
+    memcpy(f1_entry->filename, fname1, strlen(fname1));
+    memcpy(&f1_entry->modify_time, mt, sizeof(struct dir_entry_timedate_t));
+    f1_entry->modify_time.year=2018;
+    dump_dir_entry(file1_start, f1_entry);
+
+    void* file2_start = address + start_block*blocksize+64;
+    struct dir_entry_t* f2_entry = (struct dir_entry_t*)malloc(sizeof(struct dir_entry_t));
+    f2_entry->status=3;
+    f2_entry->size = 120;
+    char* fname2 = "file2.txt";
+    memcpy(f2_entry->filename, fname1, strlen(fname2));
+    memcpy(&f2_entry->modify_time, mt, sizeof(struct dir_entry_timedate_t));
+    f2_entry->modify_time.year=2018;
+    dump_dir_entry(file2_start, f2_entry);
     free(dir_entry);
 }
 
