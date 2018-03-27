@@ -332,11 +332,12 @@ void diskget(int argc, char* argv[]){
 
     struct dir_entry_timedate_t ct;
     struct dir_entry_timedate_t mt;
-    void* root_item_addr = NULL;
+    int blocknum;
+    void* dir_entry_start = find_dir_entry_and_blocknum(dirname, &blocknum);
     char file_name[32];
 
-    for(int i=0; i<root_dir_blocks*blocksize/64; i++){
-        root_item_addr = root_start_addr + i * 64;
+    for(int i=0; i<blocknum*blocksize/64; i++){
+        void* root_item_addr = dir_entry_start + i * 64;
         memcpy(&status, root_item_addr, 1);
         memset(file_name, '\0', 32);
         memcpy(&file_name, root_item_addr+27, 31);
