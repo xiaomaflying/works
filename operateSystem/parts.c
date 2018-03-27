@@ -104,6 +104,18 @@ char* dir_basename(char* path){
     return parts[length-1];
 }
 
+char* filepath_dirname(char* path){
+    char** parts = directory_parts(path);
+    int length = directory_length(path);
+    char* dest = (char*)malloc(100);
+    strcat(dest, "/");
+    for (int i=0; i<length-1; i++){
+        strcat(dest, parts[i]);
+        if (i!=length-2)
+            strcat(dest, "/");
+    }
+    return dest;
+}
 // global variables; using function get_distinfo to init them
 
 int fd;
@@ -307,8 +319,9 @@ void diskget(int argc, char* argv[]){
     }
     char* filepath = argv[2];
     char* basename = dir_basename(filepath);
+    char* dirname = filepath_dirname(argv[2]);
     char* localpath = argv[3];
-    printf("base name :%s, localpath: %s\n", basename, localpath);
+    printf("dirname: %s, base name :%s, localpath: %s\n", dirname, basename, localpath);
     get_diskinfo(argv[1]);
 
     char status;
@@ -391,7 +404,13 @@ void diskput(int argc, char* argv[]){
 
     char* localf = argv[2];
     char* basename = dir_basename(argv[3]);
+    char* dirname = filepath_dirname(argv[3]);
+    printf("filename: %s, dirname: %s\n", basename, dirname);
     int localfd = open(localf, O_RDWR);
+    if (localfd == -1){
+        printf("File not found\n");
+        exit(0);
+    }
     struct stat local_buffer;
     fstat(localfd, &local_buffer);
 
@@ -453,11 +472,13 @@ void diskput(int argc, char* argv[]){
     // }
 
     // find subdirectory and update directory entry
+    int blocknum;
+    void* dir_entry_start = find_dir_entry_and_blocknum(dirname, &blocknum);
     void* free_d_entry = NULL;
     int find = 0;
     char status;
-    for(int i=0; i<root_dir_blocks*blocksize/64; i++){
-        free_d_entry = root_start_addr + i * 64;
+    for(int i=0; i<blocknum*blocksize/64; i++){
+        free_d_entry = dir_entry_start + i * 64;
         memcpy(&status, free_d_entry, 1);
         if ((status&0x01) == 0) {
             find = 1;
