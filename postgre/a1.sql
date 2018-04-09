@@ -61,9 +61,18 @@ select peo.unswid as id from program_enrolments pe join semesters se on se.id=pe
 
 -- Q5: ...
 
+create or replace view faculty_commitee_num(id, num)
+as
+select ou.id, count(*) from 
+	(select id as cid, facultyOf(id) as id from OrgUnits) ou 
+	join OrgUnit_groups oug on oug.owner=ou.id 
+	join OrgUnits oua on oug.member=oua.id 
+	join OrgUnit_types out on out.id=oua.utype 
+	where out.name='Committee' group by ou.id order by count(*) desc;
+
 create or replace view Q5(name)
 as
-... one SQL statement, possibly using other views defined by you ...
+select ou.name from faculty_commitee_num fcn join OrgUnits ou on fcn.id =ou.id where num = (select max(num) from faculty_commitee_num);
 ;
 
 -- Q6: ...
@@ -71,7 +80,7 @@ as
 create or replace function Q6(integer) returns text
 as
 $$
-... one SQL statement, possibly using other views defined by you ...
+select name from people where id=$1 or unswid=$1
 $$ language sql
 ;
 
@@ -80,7 +89,12 @@ $$ language sql
 create or replace function Q7(text)
 	returns table (course text, year integer, term text, convenor text)
 as $$
-... one SQL statement, possibly using other views defined by you ...
+select cast(sub.code as text) as code, se.year, cast(se.term as text) as term, cast(p.name as text) as convenor from courses c 
+	join subjects sub on sub.id=c.subject 
+	join semesters se on se.id=c.semester 
+	join course_staff cs on cs.course=c.id 
+	join people p on p.id=cs.staff 
+	join staff_roles sr on sr.id=cs.role where sub.code=$1 and sr.name = 'Course Convenor';
 $$ language sql
 ;
 
