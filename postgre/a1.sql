@@ -100,18 +100,32 @@ $$ language sql
 
 -- Q8: ...
 
-create or replace function Q8(integer)
+create or replace function Q8(_sid integer)
 	returns setof NewTranscriptRecord
 as $$
 declare
-	... PLpgSQL variable delcarations ...
+	rec TranscriptRecord;
+	newrec NewTranscriptRecord;
+	prog char(4);
 begin
-	... PLpgSQL code ...
+	for rec in select * from transcript(_sid)
+	loop
+		select p.code into prog from programs p join program_enrolments pe on pe.program=p.id 
+			join students stu on stu.id=pe.student 
+			join people peo on peo.id=stu.id 
+			join Course_enrolments e on (e.student = stu.id)
+			join Courses c on (c.id = e.course)
+			join Subjects su on (c.subject = su.id)
+			join Semesters t on (c.semester = t.id and t.id=pe.semester)
+			where peo.unswid=_sid and substr(su.name,1,20) = rec.name
+			and substr(t.year::text,3,2)||lower(t.term) = rec.term;
+
+		newrec = (rec.code, rec.term, prog, rec.name, rec.mark, rec.grade, rec.uoc);
+		return next newrec;
+	end loop;
 end;
 $$ language plpgsql
 ;
-
-
 -- Q9: ...
 
 create or replace function Q9(integer)
