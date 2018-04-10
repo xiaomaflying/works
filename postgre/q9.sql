@@ -1,6 +1,6 @@
 
 create or replace function Q9(_objid integer)
-	returns setof text
+	returns setof AcObjRecord
 as $$
 declare
 	rec AcObjRecord;
@@ -25,23 +25,27 @@ begin
 	else
 	 	if (gt = 'subject') then
 	 		select definition into _definition from acad_object_groups where id = _objid;
-	 		_patterns = regexp_split_to_array(_definition, ',');
-	 		for i in 1 .. array_upper(_patterns, 1)
-	 		loop
-	 			_tmp_pattern = replace(_patterns[i], '#', '.') || '$';
-	 			for _code in select arr[1] from 
-	 				(select regexp_matches(code, _tmp_pattern) as arr from subjects ) t order by arr[1]
-	 			loop
-	 				-- raise EXCEPTION 'value %', _code;
-	 				return next _code;
-	 			end loop;
-	 			-- return next _patterns[i];
-	 		end loop;
-	 		-- raise EXCEPTION 'value %', _patterns;
+ 			 			-- raise EXCEPTION 'pattern %', _patterns[i];
+ 			if (position('{' in _definition) <> 0) then
+ 				return query select null, null where false;
+ 			else
+		 		_patterns = regexp_split_to_array(_definition, ',');
+		 		for i in 1 .. array_upper(_patterns, 1)
+		 		loop
+		 			_tmp_pattern = replace(_patterns[i], '#', '.') || '$';
+		 			for _code in select arr[1] from 
+		 				(select regexp_matches(code, _tmp_pattern) as arr from subjects ) t order by arr[1]
+		 			loop
+		 				-- raise EXCEPTION 'value %', _code;
+		 				return next (gt, _code);
+		 			end loop;
+		 			-- return next _patterns[i];
+		 		end loop;
+		 	end if;
 	 	elsif (gt = 'program') then
-	 		raise EXCEPTION 'program';
+	 		return query select null, null where false;
 	 	elsif (gt = 'stream') then
-	 		raise EXCEPTION 'stream';
+	 		return query select null, null where false;
 	 	end if;
 		rec = (gt, gdef);
 		-- return next rec;
