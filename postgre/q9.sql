@@ -33,8 +33,8 @@ begin
 		 		for i in 1 .. array_upper(_patterns, 1)
 		 		loop
 		 			_tmp_pattern = replace(_patterns[i], '#', '.') || '$';
-		 			for _code in select arr[1] from 
-		 				(select regexp_matches(code, _tmp_pattern) as arr from subjects ) t order by arr[1]
+		 			for _code in execute 'select arr[1] from ' || 
+		 				'(select regexp_matches(code, $1) as arr from ' || 'subjects' || ' ) t order by arr[1]' using _tmp_pattern
 		 			loop
 		 				-- raise EXCEPTION 'value %', _code;
 		 				return next (gt, _code);

@@ -56,7 +56,13 @@ select peo.unswid as id from program_enrolments pe join semesters se on se.id=pe
 
 create or replace view Q4c(id)
 as
-select peo.unswid as id from program_enrolments pe join semesters se on se.id=pe.semester join programs p on p.id=pe.program join people peo on peo.id=pe.student join program_group_members pgm on pgm.program=p.id join acad_object_groups aog on aog.id=pgm.ao_group where  se.year='2005' and se.term='S2' and aog.name like '%CSE%' group by peo.unswid;
+select peo.unswid as id from program_enrolments pe 
+	join semesters se on se.id=pe.semester 
+	join programs p on p.id=pe.program 
+	join people peo on peo.id=pe.student 
+	join program_group_members pgm on pgm.program=p.id 
+	join acad_object_groups aog on aog.id=pgm.ao_group 
+	where  se.year='2005' and se.term='S2' and aog.name like '%CSE%' group by peo.unswid
 ;
 
 -- Q5: ...
@@ -142,6 +148,7 @@ declare
 	_pattern text;
 	_tmp_pattern text;
 	_code text;
+	_table text;
 begin
 	select gtype into gt from acad_object_groups where id = _objid;
 	if (not found) then
@@ -150,32 +157,35 @@ begin
 
 	select gdefby into gdef from acad_object_groups where id = _objid;
 	
+	if (gt = 'subject') then
+		_table = 'subjects';
+	elsif (gt = 'program') then
+		_table = 'programs';
+	elsif (gt = 'stream') then
+		_table = 'streams';
+	end if;
+
 	if (gdef != 'pattern') then
 		return query select null, null where false;
 	else
-	 	if (gt = 'subject') then
-	 		select definition into _definition from acad_object_groups where id = _objid;
- 			 			-- raise EXCEPTION 'pattern %', _patterns[i];
- 			if (position('{' in _definition) <> 0) then
- 				return query select null, null where false;
- 			else
-		 		_patterns = regexp_split_to_array(_definition, ',');
-		 		for i in 1 .. array_upper(_patterns, 1)
-		 		loop
-		 			_tmp_pattern = replace(_patterns[i], '#', '.') || '$';
-		 			for _code in select arr[1] from 
-		 				(select regexp_matches(code, _tmp_pattern) as arr from subjects ) t order by arr[1]
-		 			loop
-		 				-- raise EXCEPTION 'value %', _code;
-		 				return next (gt, _code);
-		 			end loop;
-		 			-- return next _patterns[i];
-		 		end loop;
-		 	end if;
-	 	elsif (gt = 'program') then
-	 		return query select null, null where false;
-	 	elsif (gt = 'stream') then
-	 		return query select null, null where false;
+ 		select definition into _definition from acad_object_groups where id = _objid;
+			 			-- raise EXCEPTION 'pattern %', _patterns[i];
+			if (position('{' in _definition) <> 0 or position('=' in _definition) <> 0) then
+				return query select null, null where false;
+			else
+	 		_patterns = regexp_split_to_array(_definition, ',');
+	 		for i in 1 .. array_upper(_patterns, 1)
+	 		loop
+	 			_tmp_pattern = replace(_patterns[i], '#', '.') || '$';
+	 			for _code in execute 'select arr[1] from ' || 
+	 				'(select regexp_matches(code, $1) as arr from ' || _table::regclass || 
+	 				' ) t order by arr[1]' using _tmp_pattern
+	 			loop
+	 				-- raise EXCEPTION 'value %', _code;
+	 				return next (gt, _code);
+	 			end loop;
+	 			-- return next _patterns[i];
+	 		end loop;
 	 	end if;
 	end if;
 end;
