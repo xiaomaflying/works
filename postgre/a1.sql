@@ -128,13 +128,25 @@ $$ language plpgsql
 ;
 -- Q9: ...
 
-create or replace function Q9(integer)
+create or replace function Q9(_objid integer)
 	returns setof AcObjRecord
 as $$
 declare
-	... PLpgSQL variable delcarations ...
+	rec AcObjRecord;
+	gt text;
+	gdef text;
 begin
-	... PLpgSQL code ...
+	select gtype into gt from acad_object_groups where id = _objid;
+	if (not found) then
+		raise EXCEPTION 'Invalid object id %', _objid;
+	end if;
+
+	select gdefby into gdef from acad_object_groups where id = _objid;
+	rec = (gt, gdef);
+	if (gdef != 'pattern') then
+		return next;
+	end if;
+	return next rec;
 end;
 $$ language plpgsql
 ;
